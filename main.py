@@ -2,128 +2,141 @@ import tkinter as tk
 from tkinter import ttk
 from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
 from comtypes import CLSCTX_ALL
-import math
 
-class DeepTuneBassController:
+class BassMaster:
     def __init__(self, root):
         self.root = root
-        self.root.title("DeepTune Bass Controller")
-        self.root.geometry("600x700")
-        self.setup_audio_interface()
-        self.create_widgets()
-        self.setup_bindings()
-
-    def setup_audio_interface(self):
-        # Audio aygıtlarını ve ses arabirimlerini başlat
+        self.root.title("BassMaster v1.2")
+        self.root.geometry("400x650")
+        
+        # Audio setup
+        self.setup_audio()
+        
+        # GUI Components
+        self.create_device_selection()
+        self.create_global_controls()
+        self.create_bass_controls()
+        self.create_stereo_controls()
+        
+    def setup_audio(self):
         devices = AudioUtilities.GetSpeakers()
         interface = devices.Activate(
             IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-        self.volume_interface = interface.QueryInterface(IAudioEndpointVolume)
+        self.volume = interface.QueryInterface(IAudioEndpointVolume)
         
-        # Bass seviyesi için varsayılan aralık (-65.25 dB - 0.0 dB)
-        self.min_db, self.max_db, _ = self.volume_interface.GetVolumeRange()
-
-    def create_widgets(self):
-        # Speaker seçim bölümü
-        self.create_speaker_selection()
+    def create_device_selection(self):
+        frame = ttk.LabelFrame(self.root, text="Active Device")
+        frame.pack(padx=10, pady=5, fill='x')
         
-        # Ana kontrol panelleri
-        self.create_volume_controls()
-        self.create_bass_controls()
-        self.create_stereo_controls()
-
-    def create_speaker_selection(self):
-        frame = ttk.LabelFrame(self.root, text="SELECT OUTPUT DEVICE")
-        frame.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
-
-        # Ses aygıtlarını listele
-        self.device_list = ttk.Combobox(frame, values=self.get_audio_devices())
-        self.device_list.grid(row=1, column=0, padx=5, pady=5, sticky="ew")
-        self.device_list.set("Default Device")
-
-    def get_audio_devices(self):
-        # Sistemdeki ses çıkış aygıtlarını listele (Basitleştirilmiş)
-        return ["Default Device", "Headphones", "Speakers", "Digital Output"]
-
-    def create_volume_controls(self):
-        frame = ttk.LabelFrame(self.root, text="MASTER VOLUME")
-        frame.grid(row=1, column=0, padx=10, pady=5, sticky="ew")
-
-        self.volume_var = tk.DoubleVar()
-        self.volume_scale = ttk.Scale(frame, from_=0, to=100, 
-                                    variable=self.volume_var,
-                                    command=self.update_volume)
-        self.volume_scale.pack(fill="x", padx=5, pady=5)
+        self.devices = ttk.Combobox(frame, values=self.get_devices())
+        self.devices.pack(padx=5, pady=2, fill='x')
+        self.devices.set("Primary Sound Driver")
         
-        self.volume_label = ttk.Label(frame, text="74%")
-        self.volume_label.pack()
-
+    def get_devices(self):
+        return [d.FriendlyName for d in AudioUtilities.GetAllDevices() if d.State == 1]
+    
+    def create_global_controls(self):
+        frame = ttk.LabelFrame(self.root, text="Master Controls")
+        frame.pack(padx=10, pady=5, fill='x')
+        
+        # Volume
+        ttk.Label(frame, text="Volume").pack(anchor='w')
+        self.vol_var = tk.IntVar(value=74)
+        self.create_slider_entry(frame, self.vol_var, 0, 100, self.set_volume)
+        
+        # Bass
+        ttk.Label(frame, text="Bass Enhancer (dB)").pack(anchor='w')
+        self.bass_var = tk.IntVar(value=36)
+        self.create_slider_entry(frame, self.bass_var, -60, 60, self.set_bass)
+        
     def create_bass_controls(self):
-        frame = ttk.LabelFrame(self.root, text="BASS ENHANCER")
-        frame.grid(row=2, column=0, padx=10, pady=5, sticky="ew")
-
-        self.bass_var = tk.DoubleVar()
-        self.bass_scale = ttk.Scale(frame, from_=-24, to=24, 
-                                   variable=self.bass_var,
-                                   command=self.update_bass)
-        self.bass_scale.set(0)
-        self.bass_scale.pack(fill="x", padx=5, pady=5)
+        self.bass_frame = ttk.LabelFrame(self.root, text="Bass Channels")
+        self.bass_frame.pack(padx=10, pady=5, fill='x')
         
-        self.bass_label = ttk.Label(frame, text="0 dB")
-        self.bass_label.pack()
-
+        # Stereo Checkbox
+        self.bass_stereo = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.bass_frame, text="Stereo Bass", 
+                        variable=self.bass_stereo, command=self.toggle_bass).pack(anchor='w')
+        
+        # Channel Controls
+        self.bass_controls = ttk.Frame(self.bass_frame)
+        self.bass_controls.pack(fill='x')
+        
+        self.left_bass = tk.IntVar(value=36)
+        self.right_bass = tk.IntVar(value=36)
+        self.create_channel_control(self.bass_controls, "Left", self.left_bass)
+        self.create_channel_control(self.bass_controls, "Right", self.right_bass)
+        
     def create_stereo_controls(self):
-        frame = ttk.LabelFrame(self.root, text="STEREO BALANCE")
-        frame.grid(row=3, column=0, padx=10, pady=5, sticky="ew")
+        self.stereo_frame = ttk.LabelFrame(self.root, text="Stereo Channels")
+        self.stereo_frame.pack(padx=10, pady=5, fill='x')
         
-        self.balance_var = tk.DoubleVar()
-        self.balance_scale = ttk.Scale(frame, from_=-1, to=1,
-                                      variable=self.balance_var,
-                                      command=self.update_balance)
-        self.balance_scale.set(0)
-        self.balance_scale.pack(fill="x", padx=5, pady=5)
+        # Stereo Checkbox
+        self.vol_stereo = tk.BooleanVar(value=True)
+        ttk.Checkbutton(self.stereo_frame, text="Stereo Volume", 
+                       variable=self.vol_stereo, command=self.toggle_volume).pack(anchor='w')
         
-        self.balance_label = ttk.Label(frame, text="Center")
-        self.balance_label.pack()
-
-    def setup_bindings(self):
-        self.volume_var.trace_add("write", self.update_volume_text)
-        self.bass_var.trace_add("write", self.update_bass_text)
-        self.balance_var.trace_add("write", self.update_balance_text)
-
-    def update_volume(self, val):
-        volume = float(val) / 100
-        self.volume_interface.SetMasterVolumeLevelScalar(volume, None)
-
-    def update_bass(self, val):
-        # Bass boost için equalizer ayarı (Örnek implementasyon)
-        db = float(val)
-        normalized = db / 100
-        bass_boost = math.exp(normalized * 2) - 1  # Logaritmik dönüşüm
-        print(f"Bass boost applied: {bass_boost:.2f} dB")  # Gerçek implementasyon için API çağrısı
-
-    def update_balance(self, val):
-        balance = float(val)
-        self.volume_interface.SetChannelVolumeLevelScalar(0, max(0, 1 - balance), None)  # Left
-        self.volume_interface.SetChannelVolumeLevelScalar(1, max(0, 1 + balance), None)  # Right
-
-    def update_volume_text(self, *args):
-        self.volume_label.config(text=f"{self.volume_var.get():.0f}%")
-
-    def update_bass_text(self, *args):
-        self.bass_label.config(text=f"{self.bass_var.get():.0f} dB")
-
-    def update_balance_text(self, *args):
-        value = float(self.balance_var.get())
-        if value < -0.8:
-            text = "Full Left"
-        elif value > 0.8:
-            text = "Full Right"
+        # Channel Controls
+        self.vol_controls = ttk.Frame(self.stereo_frame)
+        self.vol_controls.pack(fill='x')
+        
+        self.left_vol = tk.IntVar(value=74)
+        self.right_vol = tk.IntVar(value=74)
+        self.create_channel_control(self.vol_controls, "Left", self.left_vol)
+        self.create_channel_control(self.vol_controls, "Right", self.right_vol)
+        
+    def create_slider_entry(self, parent, var, from_, to, command):
+        frame = ttk.Frame(parent)
+        frame.pack(fill='x')
+        
+        scale = ttk.Scale(frame, from_=from_, to=to, variable=var,
+                         command=lambda v: var.set(round(float(v))))
+        scale.pack(side='left', fill='x', expand=True, padx=2)
+        
+        entry = ttk.Entry(frame, width=5, textvariable=var)
+        entry.pack(side='right', padx=2)
+        var.trace_add('write', lambda *_: command())
+        
+    def create_channel_control(self, parent, text, var):
+        frame = ttk.Frame(parent)
+        frame.pack(fill='x', pady=2)
+        
+        ttk.Label(frame, text=text, width=6).pack(side='left')
+        self.create_slider_entry(frame, var, -60, 60, self.update_channels)
+        
+    def toggle_bass(self):
+        if self.bass_stereo.get():
+            self.bass_controls.pack_forget()
+            self.set_bass()
         else:
-            text = ["Left", "Mid-Left", "Center", "Mid-Right", "Right"][int((value+1)*2)]
-        self.balance_label.config(text=text)
+            self.bass_controls.pack(fill='x')
+            self.update_channels()
+            
+    def toggle_volume(self):
+        if self.vol_stereo.get():
+            self.vol_controls.pack_forget()
+            self.set_volume()
+        else:
+            self.vol_controls.pack(fill='x')
+            self.update_channels()
+    
+    def set_volume(self):
+        if self.vol_stereo.get():
+            vol = self.vol_var.get()/100
+            self.volume.SetMasterVolumeLevelScalar(vol, None)
+            
+    def set_bass(self):
+        if self.bass_stereo.get():
+            print(f"Setting global bass to {self.bass_var.get()}dB")  # API call here
+            
+    def update_channels(self):
+        if not self.vol_stereo.get():
+            print(f"L: {self.left_vol.get()}% | R: {self.right_vol.get()}%")
+            
+        if not self.bass_stereo.get():
+            print(f"Bass L: {self.left_bass.get()}dB | R: {self.right_bass.get()}dB")
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = DeepTuneBassController(root)
+    app = BassMaster(root)
     root.mainloop()
